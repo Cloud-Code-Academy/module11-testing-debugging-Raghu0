@@ -12,6 +12,7 @@
  * https://developer.salesforce.com/docs/atlas.en-us.apexcode.meta/apexcode/apex_dml_convertLead.htm
  * https://developer.salesforce.com/docs/atlas.en-us.apexref.meta/apexref/apex_methods_system_test.htm
  */
+//Author:: @Raghava
 public with sharing class LeadTriggerHandler extends TriggerHandler {
 
 	public List<Lead> oldRecords;

@@ -14,6 +14,7 @@ public with sharing class LeadHelperClass {
 	 * - If the title contains terms like 'assist', 'deputy', or 'jr',
 	 *   change the title to 'Assistant'.
 	 */
+	//Author:: @Raghava
 	public static void handleTitleNormalization(List<Lead> leadsToNormalize) {
 		for (Lead ld : leadsToNormalize) {
             if(ld.Title != null){
