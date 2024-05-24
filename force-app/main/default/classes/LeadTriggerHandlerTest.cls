@@ -429,96 +429,205 @@ public with sharing class LeadTriggerHandlerTest {
     @IsTest
     static void testHandleLeadAutoConvertInsert(){
         //Account to be used as convertedAccountId
-        Account account = new Account (Name = 'Test Account');
+        Account account = new Account (Name = 'Test Account', Phone = '9876543210');
         insert account;
         //Contact to be used as convertedContactId
         List<Contact> contacts = new List<Contact>();
-        for(Integer i=100; i<105; i++){
-            contacts.add(new Contact(LastName = 'Test' +i, Email = 'test' + i +'@salesforce.com', AccountId = account.Id));
-        }
-        insert contacts;
+        for(Integer i=0; i<10; i++){
 
-        List<Lead> leadBatch1 = new List<Lead>();
-        for(Integer i = 100; i < 120; i++){
+            //Contacts with matching email as Leads that are supposed to be converted
+            if(i<5){
+                contacts.add(new Contact(LastName = 'Test' +i, Email = 'test' + i +'@salesforce.com', AccountId = account.Id));
+            }
+
+            //Contacts with duplicate email address so that leads with same email are not converted
+            if(i >= 5 && i < 10){
+                contacts.add(new Contact(LastName = 'Test' +i, Email = 'test@salesforce.com', AccountId = account.Id));
+            }
+            
+        }
+        Database.DMLOptions dml = new Database.DMLOptions(); 
+        dml.DuplicateRuleHeader.allowSave = true;
+        dml.DuplicateRuleHeader.runAsCurrentUser = true;
+        Database.insert(contacts, dml);
+
+        List<Lead> leadsToBeConverted = new List<Lead>();
+        List<Lead> leadsNotToBeConverted = new List<Lead>();
+
+        for(Integer i = 0; i < 20; i++){
+
             //Leads that will be converted as Email != null AND IsConverted = False
-            if(i<105){
-                leadBatch1.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
-                Email = 'test' + i + '@salesforce.com', IsConverted = False, Country = 'Japan'));
+            if(i<5){
+                leadsToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'test' + i + '@salesforce.com', Country = 'Japan'));
             }
-            if(i>=105 && i <110){
-                leadBatch1.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
-                Email = 'test@salesforce.com', IsConverted = False, Country = 'USA'));
+
+            //Leads that will not be converted as there are multiple contacts with the Email - 'test@salesforce'
+            if(i>=5 && i <10){
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'test@salesforce.com', Country = 'USA'));
             }
-            //Leads that will not be converted as Email = null AND IsConverted = False
-            if(i>= 110 && i < 120){
-                leadBatch1.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
-                IsConverted = False, Country = 'Italy'));
+
+            //Leads that will not be converted as Email = null
+            if(i>=10 && i < 15){
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', Country = 'Italy'));
             }
+
+            //Leads that will not be converted as there are no contacts with this email
+            if(1 >= 15 && i < 20){
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Country = 'Russia', Email = 'unique@salesforce.com'));
+            }
+
         }
 
         //Insert the above Leads to trigger the handleLeadAutoConvert method
         Test.startTest();
-        insert leadBatch1;
+        insert leadsToBeConverted;
+        insert leadsNotToBeConverted;
         Test.stopTest();
 
         //Asserting if the Leads are converted as expected
-        List<Lead> assertBatch1 = [SELECT Id, IsConverted FROM Lead WHERE Country = 'Japan'];
-        for(Lead lead : assertBatch1){
+        List<Lead> convertedLeads = [SELECT Id, IsConverted FROM Lead WHERE Country = 'Japan'];
+        for(Lead lead : convertedLeads){
             //Positive Assertion
             System.Assert.areEqual(True, lead.IsConverted, 'The Leads are not Converted as Expected'); //Asserting if the leads are converted or not
             //Negative Assertion
             System.Assert.areNotEqual(False, lead.IsConverted, 'The Leads should be converted here but they did not'); //Negative Assertion if the Leads are converted or not
         }
 
-        List<Lead> assertBatch2 = [SELECT Id, IsConverted FROM Lead WHERE Country = 'USA'];
+        List<Lead> unconvertedLeads = [SELECT Id, IsConverted FROM Lead WHERE Country IN ('USA', 'Italy', 'Russia')];
 
-        for(Lead lead : assertBatch2){
+        for(Lead lead : unconvertedLeads){
             //Positive Assertion
-            System.Assert.areEqual(False, lead.IsConverted, 'The Leads Should not be converted'); //Asserting that the leads are not converted. They should not because there are no contacts with similar Email of these leads
-            //Negative Assertion
-            System.Assert.areNotEqual(True, lead.IsConverted, 'The leads should not be converted but they got');
-        }
-
-        List<Lead> assertBatch3 = [SELECT Id, IsConverted FROM Lead WHERE Country = 'Italy'];
-
-        for(Lead lead : assertBatch3){
-            //Positive Assertion
-            System.Assert.areEqual(False, lead.IsConverted, 'The Leads Should not be converted'); //Asserting that the leads are not converted. They should not because there are no contacts with similar Email of these leads
+            System.Assert.areEqual(False, lead.IsConverted, 'The Leads Should not be converted'); //Asserting that the leads are not converted.
             //Negative Assertion
             System.Assert.areNotEqual(True, lead.IsConverted, 'The leads should not be converted but they got');
         }
     }
 
-    ///Hello Reviewer, I tried testing this After Update trigger too with bulk records like above, but getting Duplicate Value errors when I tried inserting bulk records.
-    ///So resorted to single record for testing. How do we test bulk records without duplicate errors. I deactivated all the duplciate rules in the org.
-    
     @IsTest
     static void testHandleLeadAutoConvertUpdate(){
         //Account to be used as convertedAccountId
-        Account account = new Account (Name = 'Test Account');
+        Account account = new Account (Name = 'Test Account', Phone = '9876543210');
         insert account;
         //Contact to be used as convertedContactId
-        Contact contact = new Contact (LastName = 'John Doe', Email = 'jd@salesforce.com', AccountId = account.Id);
-        insert contact;
+        List<Contact> contacts = new List<Contact>();
+        for( Integer i = 0; i < 15; i++){
+            if(i < 10 ){
+                contacts.add(new Contact(LastName = 'Test' +i, Email = 'test' + i +'@salesforce.com', AccountId = account.Id));
+            }
+            if(i >= 10 && i < 15){
+                contacts.add(new Contact(LastName = 'Test' +i, Email = 'boom@salesforce.com', AccountId = account.Id));
+            }
+            
+        }
+        Database.DMLOptions dml = new Database.DMLOptions(); 
+        dml.DuplicateRuleHeader.allowSave = true;
+        dml.DuplicateRuleHeader.runAsCurrentUser = true;
+        Database.insert(contacts, dml);
 
-        Lead lead = new Lead(LastName = 'Test Lead', Company = 'Salesforce', Status = 'Open - Not Contacted', 
-        Email = 'unique@salesforce.com', IsConverted = False, Country = 'Japan');
-        insert lead;
+        List<Lead> leadsToBeConverted = new List<Lead>();
+        List<Lead> leadsNotToBeConverted = new List<Lead>();
 
-        lead.Email = 'jd@salesforce.com';
-    Test.startTest();
-    update lead;
-    Test.stopTest();
+        for(Integer i = 0; i < 20; i++){
 
-    List<Lead> assertBatch4 = [SELECT Id, IsConverted FROM Lead WHERE Country = 'Japan'];
+            //None of the emails will get converted upon creation as per the test data.
+            ///Will update these leads email as per the above created contacts and expecting to be Converted.
 
-    for(Lead l : assertBatch4){
+            if(i<5){ 
+                leadsToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'random@salesforce.com', Country = 'USA'));
+            }
 
-        //Positive Assertion
-        System.Assert.areEqual(True, l.IsConverted, 'The Leads are not Converted as Expected'); //Asserting if the leads are converted or not
-        //Negative Assertion
-        System.Assert.areNotEqual(False, l.IsConverted, 'The Leads should be converted here but they did not'); //Negative Assertion if the Leads are converted or not
+            /* Will update these leads email as 'unique@salesforce.com' so that the leads will not 
+            find any contacts with matching email to auto-convert resulting not getting converted.*/
 
-    }
+            if(i>= 5 && i < 10){  
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'random@salesforce.com', Country = 'Japan'));
+            }
+
+            ///Will update these leads email as 'test@salesforce.com' so that the leads will find multiple contacts 
+            ///with same email and not get converted.
+            if(i >= 10 && i < 15 ){
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'random@salesforce.com', Country = 'Italy'));
+            }
+
+            //Will not update the leads email for these. As there is no change in the email address before and after update, 
+            //leads should not get converted.
+            if(i >= 15 && i < 20){
+                leadsNotToBeConverted.add(new Lead(LastName = 'Test' + i, Company = 'Salesforce', Status = 'Open - Not Contacted', 
+                Email = 'random@salesforce.com', Country = 'Russia'));
+            }
+        }
+
+        //Creating the leads to be updated later
+        insert leadsToBeConverted;
+        insert leadsNotToBeConverted;
+
+        List<Lead> leadBatch1 = [SELECT Id, LastName, Email FROM Lead WHERE Country = 'USA'];
+
+        //Iterate over leadBatch1 to update the email of the lead per the contacts created above to auto-convert
+        for(Lead lead : leadBatch1){
+            lead.Email = 'test' + lead.LastName.substringAfterLast('t') + '@salesforce.com';
+        }
+
+        List<Lead> leadBatch2 = [SELECT Id, Email FROM Lead WHERE Country = 'Japan'];
+
+        //Iterate over leadBatch2 to update the email to 'unique@salesforce.com' but still the leads will 
+        //not get converted as there are no contacts created with this email
+
+        for(Lead lead : leadBatch2){
+            lead.Email = 'unique@salesforce.com';
+        }
+
+        List<Lead> leadBatch3 = [SELECT Id, Email FROM Lead WHERE Country = 'Italy'];
+        
+        /*Iterate over leadBatch3 to update the email to 'test@salesforce.com' but still the leads will 
+        not get converted as there are more than one contact with the same email.*/
+
+        for(Lead lead : leadBatch3){
+            lead.Email = 'boom@salesforce.com';
+        }
+
+        List<Lead> leadBatch4 = [SELECT Id, Email, Country FROM Lead WHERE Country = 'Russia'];
+
+        //Iterate over leadBatch4 and not updating the leads email
+
+        for(Lead lead : leadBatch4){
+            lead.Country = 'Singapore';
+        }
+
+        Test.startTest();
+        update leadBatch1;
+        update leadBatch2;
+        update leadBatch3;
+        update leadBatch4;
+        Test.stopTest();
+
+        //Assertion of the leads if they are auto-converted or not.
+
+        List<Lead> convertedLeads = [SELECT Id, IsConverted, Country, Email FROM Lead WHERE Country = 'USA'];
+        List<Lead> notConvertedLeads = [SELECT Id, IsConverted, Country, Email FROM Lead WHERE Country IN ('Japan', 'Italy','Singapore')];
+
+        //Iterating over Converted Leads
+        for(Lead lead : convertedLeads){
+
+            System.Assert.areEqual(True, lead.IsConverted, 'The Lead is not converted as Expected.');
+
+            System.Assert.areNotEqual(False, lead.IsConverted, 'The Lead should be Converted but it did not');
+
+        }
+
+        //Iterating over unconverted leads
+        for(Lead lead : notConvertedLeads){
+
+            System.Assert.areEqual(False, lead.IsConverted, 'The Lead should not be Converted.');
+
+            System.Assert.areNotEqual(True, lead.IsConverted, 'The Lead should not be Converted.');
+
+        }
     }
 }

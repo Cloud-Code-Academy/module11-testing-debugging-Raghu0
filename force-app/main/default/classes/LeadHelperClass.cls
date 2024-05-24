@@ -100,31 +100,36 @@ public with sharing class LeadHelperClass {
 
 		// Step 2: Find matching contacts based on email'
         
-		Map<String, Contact> emailToContactMap = new Map<String, Contact>();
+		Map<String, List<Contact>> emailToContactsMap = new Map<String, List<Contact>>();
 
 		for (Contact c : [SELECT Id, Email, AccountId FROM Contact WHERE Email IN :leadToEmailMap.values()]) {
 
 			if(c.Email != null){
-				if (!emailToContactMap.containsKey(c.Email)) {
-					emailToContactMap.put(c.Email, c);
+				if (!emailToContactsMap.containsKey(c.Email)) {
+					//A new entry is created in the map with the email as the key and a new list containing the current contact (c) as the value.
+					emailToContactsMap.put(c.Email, new List<Contact>{c});
 				} else {
 					// If we found another contact with the same email, we don't auto-convert.
 					// So we remove the email from the map.
-					emailToContactMap.remove(c.Email);
+					//If the email does exist as a key in the map, the current contact (c) is added to the existing list of contacts associated with that email.
+					emailToContactsMap.get(c.Email).add(c);
 				}
 			}
 		}
+
+		System.debug('emailToContactMap:::' +emailToContactsMap);
 
 		// Step 3: Auto-convert leads
 		List<Database.LeadConvert> leadConverts = new List<Database.LeadConvert>();
 		LeadStatus convertStatus = [SELECT Id, MasterLabel FROM LeadStatus WHERE IsConverted = TRUE LIMIT 1];
 		for (Id leadId : leadToEmailMap.keySet()) {
             String leadEmail = leadToEmailMap.get(leadId);
-			if (emailToContactMap.containsKey(leadEmail)) {
+			if (emailToContactsMap.containsKey(leadEmail) && emailToContactsMap.get(leadEmail).size() == 1) {
+				Contact matchingContact = emailToContactsMap.get(leadEmail)[0];
 				Database.LeadConvert lc = new Database.LeadConvert();
 				lc.setLeadId(leadId);
-				lc.setContactId(emailToContactMap.get(leadEmail).Id); // Use existing Contact Id
-				lc.setAccountId(emailToContactMap.get(leadEmail).AccountId); // Use existing Account Id
+				lc.setContactId(matchingContact.Id); // Use existing Contact Id
+				lc.setAccountId(matchingContact.AccountId); // Use existing Account Id
 				lc.setDoNotCreateOpportunity(true); // Assuming we don't want to create an opportunity
 				lc.setConvertedStatus(convertStatus.MasterLabel); // Set the converted status
 				leadConverts.add(lc);
@@ -134,5 +139,9 @@ public with sharing class LeadHelperClass {
 		if (!leadConverts.isEmpty()) {
 			List<Database.LeadConvertResult> lcrs = Database.convertLead(leadConverts);
 		}
+
+		System.debug('Converted Leads:::::' + leadConverts);
+		System.debug('Converted Leads Size::::' +leadConverts.size());
+		
 	}
 }
